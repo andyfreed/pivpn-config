@@ -90,7 +90,20 @@ sudo nmcli connection modify "$ETH_CONN" ipv4.method shared ipv4.addresses 192.1
 echo "=== Hardening SSH ==="
 sudo sed -i "s/#PasswordAuthentication yes/PasswordAuthentication no/" /etc/ssh/sshd_config
 sudo sed -i "s/PasswordAuthentication yes/PasswordAuthentication no/" /etc/ssh/sshd_config
+# Restrict SSH to ethernet and Tailscale only (not Wi-Fi)
+# Note: update the Tailscale IP after running 'sudo tailscale up --ssh'
+sudo bash -c 'cat > /etc/ssh/sshd_config.d/listen.conf << EOF
+ListenAddress 192.168.5.1
+EOF'
 sudo systemctl restart sshd
+
+echo "=== Disabling unnecessary services ==="
+sudo systemctl disable --now cups cups-browsed 2>/dev/null
+sudo systemctl disable --now bluetooth 2>/dev/null
+sudo systemctl disable --now ModemManager 2>/dev/null
+sudo systemctl disable --now rpcbind nfs-blkmap 2>/dev/null
+sudo systemctl disable --now avahi-daemon 2>/dev/null
+sudo systemctl disable --now lightdm 2>/dev/null
 
 echo "=== Enabling services ==="
 sudo systemctl daemon-reload
@@ -99,6 +112,10 @@ sudo systemctl enable vpn-router.service
 
 echo "=== Setting up Tailscale ==="
 echo "Run 'sudo tailscale up --ssh' and authenticate when ready."
+echo "Then add your Tailscale IP to /etc/ssh/sshd_config.d/listen.conf:"
+echo "  TSIP=\$(tailscale ip -4)"
+echo "  echo \"ListenAddress \$TSIP\" | sudo tee -a /etc/ssh/sshd_config.d/listen.conf"
+echo "  sudo systemctl restart sshd"
 
 echo ""
 echo "=== Setup complete! ==="
@@ -108,3 +125,6 @@ echo "  sudo /usr/local/bin/vpn-router-setup.sh"
 echo ""
 echo "Ethernet clients get 192.168.5.x, all traffic goes through Mullvad VPN"
 echo "Kill switch active: if VPN drops, traffic is blocked (not leaked)"
+echo ""
+echo "IMPORTANT: Install uBlock Origin in your browser and enable"
+echo "'Prevent WebRTC from leaking local IP addresses' in its settings."

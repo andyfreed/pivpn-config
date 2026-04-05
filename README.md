@@ -8,9 +8,8 @@ Configuration and setup script for a Raspberry Pi VPN router using Mullvad and W
 - Routes all ethernet client traffic through a Mullvad VPN tunnel
 - Kill switch: if VPN drops, traffic is blocked (not leaked to ISP)
 - DNS queries go through Mullvad's DNS inside the tunnel
-- IPv6 disabled to prevent leaks
 - Tailscale for remote SSH access from anywhere
-- SSH hardened to key-only authentication
+- Hardened: IPv6 disabled, SSH key-only, unnecessary services removed
 
 ## Hardware
 
@@ -28,12 +27,23 @@ Configuration and setup script for a Raspberry Pi VPN router using Mullvad and W
 
 ## Security
 
-- All client traffic forced through VPN tunnel
-- Kill switch blocks traffic if VPN drops (iptables DROP on eth0 -> wlan0)
-- IPv6 completely disabled to prevent tunnel bypass
-- DNS goes to Mullvad DNS (10.64.0.1) inside the tunnel
-- ICMP redirects disabled to prevent route manipulation
-- SSH password authentication disabled
+| Safeguard | Details |
+|-----------|---------|
+| VPN kill switch | eth0 -> wlan0 is DROP'd, traffic blocked if VPN drops |
+| DNS through VPN | Clients use Mullvad DNS (10.64.0.1) inside the tunnel |
+| IPv6 disabled | Prevents IPv6 traffic from leaking outside the tunnel |
+| IPv6 forwarding blocked | Double protection even if IPv6 re-enables |
+| ICMP redirects blocked | Prevents route manipulation attacks |
+| SSH key-only | Password authentication disabled |
+| SSH restricted | Only listens on ethernet (192.168.5.1) and Tailscale |
+| Bluetooth disabled | Reduced attack surface |
+| CUPS/print disabled | Reduced attack surface |
+| ModemManager disabled | Not needed, removed |
+| RPC/NFS disabled | Not needed, removed |
+| Avahi/mDNS disabled | Stops hostname broadcasting on network |
+| GUI disabled | Headless, fewer services running |
+
+**Client-side:** Install [uBlock Origin](https://ublockorigin.com/) in your browser and enable "Prevent WebRTC from leaking local IP addresses" in its settings.
 
 ## Restore from scratch
 
@@ -61,6 +71,14 @@ sudo tailscale up --ssh
 ```
 
 7. Open the auth link in your browser to add the Pi to your Tailscale network
-8. Reboot the Pi
+8. Add your Tailscale IP to the SSH listener:
+
+```bash
+TSIP=$(tailscale ip -4)
+echo "ListenAddress $TSIP" | sudo tee -a /etc/ssh/sshd_config.d/listen.conf
+sudo systemctl restart sshd
+```
+
+9. Reboot the Pi
 
 All services start automatically on boot. Plug any device into the ethernet port and its traffic is VPN-protected.
