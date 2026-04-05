@@ -1,0 +1,12 @@
+[Unit]
+Description=VPN Router Setup
+After=NetworkManager.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/vpn-router-setup.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
