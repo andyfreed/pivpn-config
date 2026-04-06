@@ -31,6 +31,7 @@ Configuration and setup script for a Raspberry Pi VPN router using Mullvad and W
 |-----------|---------|
 | VPN kill switch | eth0 -> wlan0 is DROP'd, traffic blocked if VPN drops |
 | DNS through VPN | Clients use Mullvad DNS (10.64.0.1) inside the tunnel |
+| MTU/MSS clamping | Fixes HTTPS through VPN tunnel (MTU 1280, MSS clamped) |
 | IPv6 disabled | Prevents IPv6 traffic from leaking outside the tunnel |
 | IPv6 forwarding blocked | Double protection even if IPv6 re-enables |
 | ICMP redirects blocked | Prevents route manipulation attacks |
@@ -82,3 +83,14 @@ sudo systemctl restart sshd
 9. Reboot the Pi
 
 All services start automatically on boot. Plug any device into the ethernet port and its traffic is VPN-protected.
+
+## Multiple Wi-Fi networks
+
+The setup script lets you add multiple Wi-Fi networks with priorities. The Pi will try the highest priority network first and fall back to others if unavailable. You can also add networks later:
+
+```bash
+sudo nmcli connection add type wifi ifname wlan0 con-name "NetworkName" ssid "NetworkName"
+sudo nmcli connection modify "NetworkName" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "password" connection.autoconnect yes connection.autoconnect-priority 5
+```
+
+Higher priority number = tried first.

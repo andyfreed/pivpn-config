@@ -83,6 +83,11 @@ sudo cp "$SCRIPT_DIR/configs/vpn-router-setup.sh" /usr/local/bin/vpn-router-setu
 sudo chmod +x /usr/local/bin/vpn-router-setup.sh
 sudo cp "$SCRIPT_DIR/configs/vpn-router.service" /etc/systemd/system/vpn-router.service
 
+# Fix DNS - use Mullvad DNS instead of Tailscale DNS (which can't resolve through VPN)
+sudo cp "$SCRIPT_DIR/configs/resolv.conf.mullvad" /etc/resolv.conf.mullvad
+sudo cp /etc/resolv.conf.mullvad /etc/resolv.conf
+sudo chattr +i /etc/resolv.conf
+
 echo "=== Configuring ethernet sharing ==="
 ETH_CONN=$(nmcli -t -f NAME,TYPE connection show | grep ethernet | head -1 | cut -d: -f1)
 sudo nmcli connection modify "$ETH_CONN" ipv4.method shared ipv4.addresses 192.168.5.1/24 ipv4.gateway "" connection.autoconnect yes
@@ -116,6 +121,21 @@ echo "Then add your Tailscale IP to /etc/ssh/sshd_config.d/listen.conf:"
 echo "  TSIP=\$(tailscale ip -4)"
 echo "  echo \"ListenAddress \$TSIP\" | sudo tee -a /etc/ssh/sshd_config.d/listen.conf"
 echo "  sudo systemctl restart sshd"
+
+echo "=== Adding Wi-Fi networks ==="
+echo "You can add additional Wi-Fi networks for fallback."
+echo "The Pi will try higher-priority networks first."
+while true; do
+    read -p "Add a Wi-Fi network? (y/n): " ADD_WIFI
+    if [ "$ADD_WIFI" != "y" ]; then break; fi
+    read -p "  SSID: " WIFI_SSID
+    read -p "  Password: " WIFI_PASS
+    read -p "  Priority (higher = preferred, default 5): " WIFI_PRIO
+    WIFI_PRIO=${WIFI_PRIO:-5}
+    sudo nmcli connection add type wifi ifname wlan0 con-name "$WIFI_SSID" ssid "$WIFI_SSID"
+    sudo nmcli connection modify "$WIFI_SSID" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$WIFI_PASS" connection.autoconnect yes connection.autoconnect-priority "$WIFI_PRIO"
+    echo "  Added $WIFI_SSID with priority $WIFI_PRIO"
+done
 
 echo ""
 echo "=== Setup complete! ==="
