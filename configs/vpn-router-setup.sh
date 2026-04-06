@@ -5,7 +5,9 @@ sleep 5
 wg-quick up mullvad
 
 # Fix DNS to use Mullvad (Tailscale DNS can't resolve through VPN)
+chattr -i /etc/resolv.conf 2>/dev/null
 cp /etc/resolv.conf.mullvad /etc/resolv.conf
+chattr +i /etc/resolv.conf
 
 # NAT through VPN
 nft add table nat 2>/dev/null

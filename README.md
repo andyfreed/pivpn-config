@@ -8,6 +8,7 @@ Configuration and setup script for a Raspberry Pi VPN router using Mullvad and W
 - Routes all ethernet client traffic through a Mullvad VPN tunnel
 - Kill switch: if VPN drops, traffic is blocked (not leaked to ISP)
 - DNS queries go through Mullvad's DNS inside the tunnel
+- Tailscale exit node: remote devices on the tailnet can route all traffic through the Pi and out via Mullvad
 - Tailscale for remote SSH access from anywhere
 - Hardened: IPv6 disabled, SSH key-only, unnecessary services removed
 
@@ -30,7 +31,7 @@ Configuration and setup script for a Raspberry Pi VPN router using Mullvad and W
 | Safeguard | Details |
 |-----------|---------|
 | VPN kill switch | eth0 -> wlan0 is DROP'd, traffic blocked if VPN drops |
-| DNS through VPN | Clients use Mullvad DNS (10.64.0.1) inside the tunnel |
+| DNS through VPN | All DNS goes to Mullvad DNS (10.64.0.1) only — no fallback resolvers |
 | MTU/MSS clamping | Fixes HTTPS through VPN tunnel (MTU 1280, MSS clamped) |
 | IPv6 disabled | Prevents IPv6 traffic from leaking outside the tunnel |
 | IPv6 forwarding blocked | Double protection even if IPv6 re-enables |
