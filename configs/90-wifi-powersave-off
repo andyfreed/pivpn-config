@@ -1,0 +1,7 @@
+#!/bin/bash
+# NetworkManager dispatcher script: disable Wi-Fi power save on wlan0.
+# Broadcom cyw43455 power save causes multi-second latency spikes even
+# with a strong signal, making Wi-Fi unusable as a VPN router uplink.
+if [ "$1" = "wlan0" ] && [ "$2" = "up" ]; then
+    /sbin/iw dev wlan0 set power_save off
+fi

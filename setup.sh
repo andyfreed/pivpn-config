@@ -83,14 +83,59 @@ sudo cp "$SCRIPT_DIR/configs/vpn-router-setup.sh" /usr/local/bin/vpn-router-setu
 sudo chmod +x /usr/local/bin/vpn-router-setup.sh
 sudo cp "$SCRIPT_DIR/configs/vpn-router.service" /etc/systemd/system/vpn-router.service
 
+echo "=== Installing Wi-Fi power save dispatcher ==="
+# Broadcom Wi-Fi power save causes multi-second latency spikes on the Pi.
+# This dispatcher disables it every time wlan0 comes up.
+sudo cp "$SCRIPT_DIR/configs/90-wifi-powersave-off" /etc/NetworkManager/dispatcher.d/90-wifi-powersave-off
+sudo chmod +x /etc/NetworkManager/dispatcher.d/90-wifi-powersave-off
+
+echo "=== Installing CPU performance governor service ==="
+sudo cp "$SCRIPT_DIR/configs/cpu-performance.service" /etc/systemd/system/cpu-performance.service
+
+echo "=== Applying Pi 4 overclock (arm_freq=2100, over_voltage=8) ==="
+# Only on Pi 4, only if not already present. Needs active cooling.
+if grep -q "Raspberry Pi 4" /proc/device-tree/model 2>/dev/null && \
+   ! grep -q "pivpn-overclock" /boot/firmware/config.txt; then
+    sudo cp /boot/firmware/config.txt /boot/firmware/config.txt.bak-preoc
+    sudo tee -a /boot/firmware/config.txt >/dev/null <<'EOF'
+
+# pivpn-overclock (Pi 4 stable tier, requires active cooling)
+[pi4]
+arm_freq=2100
+over_voltage=8
+gpu_freq=750
+EOF
+    echo "  Overclock appended. Takes effect on next reboot."
+else
+    echo "  Skipped (not a Pi 4 or overclock already present)."
+fi
+
 # Fix DNS - use Mullvad DNS instead of Tailscale DNS (which can't resolve through VPN)
 sudo cp "$SCRIPT_DIR/configs/resolv.conf.mullvad" /etc/resolv.conf.mullvad
 sudo cp /etc/resolv.conf.mullvad /etc/resolv.conf
 sudo chattr +i /etc/resolv.conf
 
-echo "=== Configuring ethernet sharing ==="
-ETH_CONN=$(nmcli -t -f NAME,TYPE connection show | grep ethernet | head -1 | cut -d: -f1)
+echo "=== Configuring ethernet sharing (eth0 = client LAN) ==="
+# eth0 is the Pi's built-in ethernet port; it serves the 192.168.5.0/24
+# client LAN. If a USB ethernet adapter is present (eth1), it becomes the
+# preferred uplink to the router/modem with wlan0 as a Wi-Fi fallback.
+ETH_CONN=$(nmcli -t -f NAME,TYPE,DEVICE connection show | awk -F: '$2=="802-3-ethernet" && $3=="eth0"{print $1; exit}')
+if [ -z "$ETH_CONN" ]; then
+    ETH_CONN=$(nmcli -t -f NAME,TYPE connection show | grep ethernet | head -1 | cut -d: -f1)
+fi
 sudo nmcli connection modify "$ETH_CONN" ipv4.method shared ipv4.addresses 192.168.5.1/24 ipv4.gateway "" connection.autoconnect yes
+
+echo "=== Configuring USB ethernet uplink (eth1) if present ==="
+if [ -e /sys/class/net/eth1 ]; then
+    sudo nmcli connection add type ethernet ifname eth1 con-name eth1-uplink \
+        autoconnect yes ipv4.method auto ipv6.method disabled ipv4.route-metric 50 2>/dev/null || \
+    sudo nmcli connection modify eth1-uplink ipv4.method auto ipv6.method disabled ipv4.route-metric 50
+    sudo nmcli connection up eth1-uplink 2>/dev/null || true
+    echo "  eth1 configured as primary uplink (metric 50)."
+else
+    echo "  No eth1 detected. Wi-Fi (wlan0) will be the uplink."
+    echo "  Plug in a USB ethernet adapter and re-run this block to switch."
+fi
 
 echo "=== Hardening SSH ==="
 sudo sed -i "s/#PasswordAuthentication yes/PasswordAuthentication no/" /etc/ssh/sshd_config
@@ -114,6 +159,7 @@ echo "=== Enabling services ==="
 sudo systemctl daemon-reload
 sudo systemctl enable dnsmasq
 sudo systemctl enable vpn-router.service
+sudo systemctl enable cpu-performance.service
 
 echo "=== Setting up Tailscale ==="
 echo "Run 'sudo tailscale up --ssh' and authenticate when ready."

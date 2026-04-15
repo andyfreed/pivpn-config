@@ -16,12 +16,18 @@ Infrastructure config for a Raspberry Pi 4 VPN router. Not a software project �
   - `dnsmasq.conf` — DHCP server for ethernet clients (192.168.5.x)
   - `resolv.conf.mullvad` — DNS config using Mullvad DNS (10.64.0.1)
   - `90-ipforward.conf` / `91-disable-ipv6.conf` — sysctl hardening
+  - `90-wifi-powersave-off` — NetworkManager dispatcher script that force-disables Broadcom Wi-Fi power save every time wlan0 comes up
+  - `cpu-performance.service` — systemd unit pinning the CPU governor to `performance` (no frequency scaling lag)
 
 ## Key design decisions
 
+- **Uplink: eth1 (USB ethernet) preferred, wlan0 (Wi-Fi) fallback** — The Pi's built-in Broadcom Wi-Fi is unusable as a router uplink (power save causes multi-second latency spikes; rate adaptation gets stuck). A USB 3 gigabit ethernet adapter wired to the upstream router is the primary uplink (route metric 50). wlan0 stays configured as fallback (metric 600).
 - **MTU 1280 + MSS clamping** — Required because WireGuard reduces effective MTU. Without this, HTTPS fails silently (TCP handshake works but data transfer hangs).
 - **Mullvad DNS in resolv.conf** — Tailscale DNS (100.100.100.100) cannot resolve through the VPN tunnel. The Pi's own DNS must use Mullvad DNS (10.64.0.1). resolv.conf is made immutable with `chattr +i`.
-- **Kill switch via iptables** — `eth0 -> wlan0` is DROP'd so if VPN dies, client traffic is blocked, not leaked to ISP.
+- **Kill switch via iptables** — `eth0 -> wlan0` AND `eth0 -> eth1` are both DROP'd so if the VPN dies, client traffic is blocked on every uplink, not leaked to the ISP.
+- **Wi-Fi power save disabled** — Dispatcher script at `/etc/NetworkManager/dispatcher.d/90-wifi-powersave-off` runs `iw dev wlan0 set power_save off` on every wlan0 up event. Without this, wlan0 pings are 2500 ms+ even with perfect signal.
+- **CPU governor pinned to performance** — `cpu-performance.service` systemd unit. `ondemand` causes noticeable latency spikes on wake-from-idle for a router workload.
+- **Pi 4 overclock: 2100 MHz / over_voltage 8** — Appended to `/boot/firmware/config.txt` by `setup.sh`. Stable tier for Pi 4 with active cooling. Only applied on Pi 4 and only if not already present (idempotent). Backup at `config.txt.bak-preoc`.
 - **No secrets in repo** — WireGuard keys, Mullvad account number, and Wi-Fi passwords are all prompted during setup or generated at runtime.
 
 ## Target Pi

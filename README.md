@@ -4,33 +4,39 @@ Configuration and setup script for a Raspberry Pi VPN router using Mullvad and W
 
 ## What it does
 
-- Connects to the internet via Wi-Fi
+- Connects to the internet via USB ethernet (primary) or Wi-Fi (fallback)
 - Routes all ethernet client traffic through a Mullvad VPN tunnel
-- Kill switch: if VPN drops, traffic is blocked (not leaked to ISP)
+- Kill switch: if VPN drops, traffic is blocked (not leaked to ISP) on every uplink
 - DNS queries go through Mullvad's DNS inside the tunnel
 - Tailscale exit node: remote devices on the tailnet can route all traffic through the Pi and out via Mullvad
 - Tailscale for remote SSH access from anywhere
 - Hardened: IPv6 disabled, SSH key-only, unnecessary services removed
+- Tuned: Wi-Fi power save disabled, CPU governor pinned to performance, Pi 4 overclock applied
 
 ## Hardware
 
-- Raspberry Pi 4 Model B (or Pi 5)
-- Ethernet cable to connect devices
+- Raspberry Pi 4 Model B (or Pi 5) with active cooling (fan/heatsink — overclock is applied by default)
+- USB 3 Gigabit Ethernet adapter for the uplink (e.g. TP-Link UE300) — plug into a blue USB 3 port
+- Ethernet cable from the adapter to your upstream router
+- Ethernet cable from the Pi's built-in port (eth0) to your wired client device(s)
+
+The Pi's built-in Wi-Fi is kept configured as a fallback uplink but is not recommended as primary — Broadcom's power save behavior and wireless-backhauled mesh interference make it unreliable for a router role.
 
 ## Network layout
 
 | Interface | Subnet | Purpose |
 |-----------|--------|---------|
-| wlan0 | DHCP from router | Internet via Wi-Fi |
+| eth1 (USB) | DHCP from router | **Primary** uplink (route metric 50) |
+| wlan0 | DHCP from router | Fallback uplink (route metric 600) |
 | mullvad | 10.x.x.x (Mullvad) | VPN tunnel |
-| eth0 | 192.168.5.0/24 | Wired device sharing |
+| eth0 | 192.168.5.0/24 | Wired client LAN |
 | tailscale0 | 100.x.x.x | Remote access |
 
 ## Security
 
 | Safeguard | Details |
 |-----------|---------|
-| VPN kill switch | eth0 -> wlan0 is DROP'd, traffic blocked if VPN drops |
+| VPN kill switch | eth0 -> eth1 AND eth0 -> wlan0 are DROP'd, traffic blocked on every uplink if VPN drops |
 | DNS through VPN | All DNS goes to Mullvad DNS (10.64.0.1) only — no fallback resolvers |
 | MTU/MSS clamping | Fixes HTTPS through VPN tunnel (MTU 1280, MSS clamped) |
 | IPv6 disabled | Prevents IPv6 traffic from leaking outside the tunnel |
@@ -53,8 +59,8 @@ Configuration and setup script for a Raspberry Pi VPN router using Mullvad and W
    - Set hostname to `pivpn`
    - Set username/password
    - Enable SSH with password auth
-   - Configure Wi-Fi
-2. Boot the Pi and SSH in
+   - Configure Wi-Fi (needed for first boot before USB ethernet is wired up)
+2. Boot the Pi and SSH in. If a USB ethernet adapter is already plugged in and connected to your router, `setup.sh` will auto-configure it as the preferred uplink.
 3. Add your SSH public key to `~/.ssh/authorized_keys`
 4. Run:
 

@@ -14,8 +14,10 @@ nft add table nat 2>/dev/null
 nft add chain nat postrouting { type nat hook postrouting priority 100 \; } 2>/dev/null
 nft add rule nat postrouting oifname "mullvad" masquerade 2>/dev/null
 
-# Kill switch: block eth0 -> wlan0 (ISP), only allow eth0 -> mullvad (VPN)
+# Kill switch: block eth0 -> any uplink (wlan0 Wi-Fi, eth1 USB ethernet).
+# Only eth0 -> mullvad (VPN) and eth0 -> tailscale0 are allowed.
 iptables -I FORWARD -i eth0 -o wlan0 -j DROP
+iptables -I FORWARD -i eth0 -o eth1 -j DROP
 iptables -I FORWARD -i eth0 -o mullvad -j ACCEPT
 iptables -I FORWARD -i mullvad -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT
 iptables -I FORWARD -i eth0 -o tailscale0 -j ACCEPT
