@@ -92,8 +92,11 @@ sudo chmod +x /etc/NetworkManager/dispatcher.d/90-wifi-powersave-off
 echo "=== Installing CPU performance governor service ==="
 sudo cp "$SCRIPT_DIR/configs/cpu-performance.service" /etc/systemd/system/cpu-performance.service
 
-echo "=== Applying Pi 4 overclock (arm_freq=2100, over_voltage=8) ==="
+echo "=== Applying Pi 4 overclock (arm_freq=2000, over_voltage=6) ==="
 # Only on Pi 4, only if not already present. Needs active cooling.
+# 2000/6 is the conservative-stable tier — works on all Pi 4 revisions
+# including Rev 1.2 (B0 stepping) with typical USB-C power bricks.
+# Pushing 2100/8 risks under-voltage events on marginal PSUs.
 if grep -q "Raspberry Pi 4" /proc/device-tree/model 2>/dev/null && \
    ! grep -q "pivpn-overclock" /boot/firmware/config.txt; then
     sudo cp /boot/firmware/config.txt /boot/firmware/config.txt.bak-preoc
@@ -101,8 +104,8 @@ if grep -q "Raspberry Pi 4" /proc/device-tree/model 2>/dev/null && \
 
 # pivpn-overclock (Pi 4 stable tier, requires active cooling)
 [pi4]
-arm_freq=2100
-over_voltage=8
+arm_freq=2000
+over_voltage=6
 gpu_freq=750
 EOF
     echo "  Overclock appended. Takes effect on next reboot."
