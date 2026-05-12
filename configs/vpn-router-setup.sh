@@ -27,13 +27,15 @@ iptables -I FORWARD -i eth0 -o eth1 -j DROP
 iptables -I FORWARD -i eth0 -o mullvad -j ACCEPT
 
 # Local LAN exception: allow clients to reach specific hosts on the upstream
-# LAN directly (e.g. a NAS). These rules are inserted ABOVE the eth1 DROP so
-# they match first. Source-NAT so the remote host sees traffic coming from the
-# Pi's eth1 address and can reply without knowing about 192.168.5.0/24.
+# LAN directly (e.g. a NAS). These rules are inserted ABOVE the uplink DROPs
+# so they match first. Rules are uplink-interface-agnostic — they work whether
+# the Pi is currently using eth1 (USB ethernet) or wlan0 (Wi-Fi fallback) for
+# its uplink. Source-NAT so the remote host sees traffic coming from the Pi's
+# upstream address and can reply without knowing about 192.168.5.0/24.
 for host in $LOCAL_LAN_HOSTS; do
-    iptables -I FORWARD -i eth0 -o eth1 -d "$host" -j ACCEPT
-    iptables -I FORWARD -i eth1 -o eth0 -s "$host" -m state --state RELATED,ESTABLISHED -j ACCEPT
-    nft add rule nat postrouting oifname "eth1" ip daddr "$host" ip saddr 192.168.5.0/24 masquerade 2>/dev/null
+    iptables -I FORWARD -i eth0 -d "$host" -j ACCEPT
+    iptables -I FORWARD -o eth0 -s "$host" -m state --state RELATED,ESTABLISHED -j ACCEPT
+    nft add rule nat postrouting ip daddr "$host" ip saddr 192.168.5.0/24 masquerade 2>/dev/null
 done
 iptables -I FORWARD -i mullvad -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT
 iptables -I FORWARD -i eth0 -o tailscale0 -j ACCEPT
