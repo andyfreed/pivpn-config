@@ -83,6 +83,16 @@ sudo cp "$SCRIPT_DIR/configs/vpn-router-setup.sh" /usr/local/bin/vpn-router-setu
 sudo chmod +x /usr/local/bin/vpn-router-setup.sh
 sudo cp "$SCRIPT_DIR/configs/vpn-router.service" /etc/systemd/system/vpn-router.service
 
+echo "=== Installing control-app helper scripts ==="
+# Used by the PiVPN Control desktop app (github.com/andyfreed/pivpn-control):
+#   vpn-status.sh   - emit status JSON (read-only)
+#   switch-server.sh - switch to the fastest server in a region (us|eu)
+#   vpn-update.sh   - check/apply updates to this repo and redeploy
+for helper in vpn-status.sh switch-server.sh vpn-update.sh; do
+    sudo cp "$SCRIPT_DIR/configs/$helper" "/usr/local/bin/$helper"
+    sudo chmod +x "/usr/local/bin/$helper"
+done
+
 echo "=== Installing Wi-Fi power save dispatcher ==="
 # Broadcom Wi-Fi power save causes multi-second latency spikes on the Pi.
 # This dispatcher disables it every time wlan0 comes up.
