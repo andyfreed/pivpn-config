@@ -19,7 +19,7 @@ percity={}
 for r in d:
     if r.get('country_code') in ccs and r.get('active'):
         percity.setdefault(r.get('city_code'),[])
-        if len(percity[r['city_code']])<3:
+        if len(percity[r['city_code']])<2:
             percity[r['city_code']].append(r['ipv4_addr_in']+':'+r['hostname'])
 for v in percity.values():
     for e in v: print(e)
@@ -29,13 +29,28 @@ PY
 sudo wg-quick down mullvad >/dev/null 2>&1 || true
 sleep 1
 
-best_ip=""; best_hn=""; best_ms=99999
+# Ping all candidates IN PARALLEL — total time is bounded by the slowest single
+# ping (~2s), not the sum. Each writes "ms hostname ip" to its own temp file.
+RESDIR=$(mktemp -d)
+i=0
 while IFS=: read ip hn; do
-    ms=$(ping -c 3 -W 1 -q "$ip" 2>/dev/null | tail -1 | sed 's|.*= ||' | cut -d/ -f2)
-    [ -z "$ms" ] && continue
-    msi=${ms%.*}
-    if [ "$msi" -lt "$best_ms" ] 2>/dev/null; then best_ms=$msi; best_ip=$ip; best_hn=$hn; fi
+    [ -z "$ip" ] && continue
+    (
+        ms=$(ping -c 2 -W 1 -q "$ip" 2>/dev/null | tail -1 | sed 's|.*= ||' | cut -d/ -f2)
+        [ -n "$ms" ] && echo "${ms%.*} $hn $ip" > "$RESDIR/$i"
+    ) &
+    i=$((i+1))
 done < /tmp/cands.txt
+wait
+
+# Pick the lowest-latency result.
+best_ip=""; best_hn=""; best_ms=99999
+for f in "$RESDIR"/*; do
+    [ -f "$f" ] || continue
+    read m h p < "$f"
+    if [ "$m" -lt "$best_ms" ] 2>/dev/null; then best_ms=$m; best_hn=$h; best_ip=$p; fi
+done
+rm -rf "$RESDIR"
 
 if [ -z "$best_ip" ]; then
     echo "ERROR: no reachable server; restoring tunnel"
