@@ -88,7 +88,7 @@ echo "=== Installing control-app helper scripts ==="
 #   vpn-status.sh   - emit status JSON (read-only)
 #   switch-server.sh - switch to the fastest server in a region (us|eu)
 #   vpn-update.sh   - check/apply updates to this repo and redeploy
-for helper in vpn-status.sh switch-server.sh vpn-update.sh; do
+for helper in vpn-status.sh switch-server.sh vpn-update.sh vpn-audit.sh; do
     sudo cp "$SCRIPT_DIR/configs/$helper" "/usr/local/bin/$helper"
     sudo chmod +x "/usr/local/bin/$helper"
 done
@@ -153,6 +153,17 @@ fi
 echo "=== Hardening SSH ==="
 sudo sed -i "s/#PasswordAuthentication yes/PasswordAuthentication no/" /etc/ssh/sshd_config
 sudo sed -i "s/PasswordAuthentication yes/PasswordAuthentication no/" /etc/ssh/sshd_config
+# Raspberry Pi OS images ship a cloud-init drop-in that sets
+# `PasswordAuthentication yes`, which overrides the main config. Neutralize it
+# AND add a high-priority drop-in so key-only auth wins no matter what.
+if [ -f /etc/ssh/sshd_config.d/50-cloud-init.conf ]; then
+    sudo sed -i "s/^PasswordAuthentication yes/PasswordAuthentication no/" \
+        /etc/ssh/sshd_config.d/50-cloud-init.conf
+fi
+sudo tee /etc/ssh/sshd_config.d/99-hardening.conf >/dev/null <<'EOF'
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+EOF
 # Restrict SSH to ethernet and Tailscale only (not Wi-Fi)
 # Note: update the Tailscale IP after running 'sudo tailscale up --ssh'
 sudo bash -c 'cat > /etc/ssh/sshd_config.d/listen.conf << EOF
