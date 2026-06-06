@@ -88,7 +88,7 @@ echo "=== Installing control-app helper scripts ==="
 #   vpn-status.sh   - emit status JSON (read-only)
 #   switch-server.sh - switch to the fastest server in a region (us|eu)
 #   vpn-update.sh   - check/apply updates to this repo and redeploy
-for helper in vpn-status.sh switch-server.sh vpn-update.sh vpn-audit.sh; do
+for helper in vpn-status.sh switch-server.sh vpn-update.sh vpn-audit.sh vpn-stats.sh vpn-ctl.sh; do
     sudo cp "$SCRIPT_DIR/configs/$helper" "/usr/local/bin/$helper"
     sudo chmod +x "/usr/local/bin/$helper"
 done

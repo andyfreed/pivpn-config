@@ -46,7 +46,7 @@ if [ "$1" = "apply" ]; then
 
     # Redeploy the control-app helper scripts (incl. this one) so they stay
     # current. The new copy of vpn-update.sh takes effect on the NEXT run.
-    for helper in vpn-status.sh switch-server.sh vpn-update.sh vpn-audit.sh; do
+    for helper in vpn-status.sh switch-server.sh vpn-update.sh vpn-audit.sh vpn-stats.sh vpn-ctl.sh; do
         [ -f "$REPO/configs/$helper" ] && \
             sudo cp "$REPO/configs/$helper" "/usr/local/bin/$helper" && \
             sudo chmod +x "/usr/local/bin/$helper"
