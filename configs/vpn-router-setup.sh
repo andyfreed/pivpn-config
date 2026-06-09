@@ -65,5 +65,7 @@ rerule -6 -- FORWARD -i eth0 -j DROP
 rerule -t mangle -- POSTROUTING -o mullvad -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 rerule -t mangle -- FORWARD -o mullvad -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 
-# Restart dnsmasq
-systemctl restart dnsmasq
+# DHCP/DNS for the client LAN is provided by NetworkManager's shared mode on
+# eth0 (it spawns its own dnsmasq on 192.168.5.1, forwarding DNS to whatever
+# /etc/resolv.conf says — i.e. Mullvad 10.64.0.1 through the tunnel). The
+# standalone dnsmasq service is disabled; nothing to restart here.

@@ -13,7 +13,6 @@ Infrastructure config for a Raspberry Pi 4 VPN router. Not a software project �
   - `mullvad.conf` — WireGuard config template (secrets replaced at setup time)
   - `vpn-router-setup.sh` — Runs at boot: brings up VPN, sets DNS, configures NAT/kill switch/MSS clamping
   - `vpn-router.service` — systemd unit for the boot script
-  - `dnsmasq.conf` — DHCP server for ethernet clients (192.168.5.x)
   - `resolv.conf.mullvad` — DNS config using Mullvad DNS (10.64.0.1)
   - `90-ipforward.conf` / `91-disable-ipv6.conf` — sysctl hardening
   - `90-wifi-powersave-off` — NetworkManager dispatcher script that force-disables Broadcom Wi-Fi power save every time wlan0 comes up
@@ -25,6 +24,7 @@ Infrastructure config for a Raspberry Pi 4 VPN router. Not a software project �
 - **MTU 1280 + MSS clamping** — Required because WireGuard reduces effective MTU. Without this, HTTPS fails silently (TCP handshake works but data transfer hangs).
 - **Mullvad DNS in resolv.conf** — Tailscale DNS (100.100.100.100) cannot resolve through the VPN tunnel. The Pi's own DNS must use Mullvad DNS (10.64.0.1). resolv.conf is made immutable with `chattr +i`.
 - **Kill switch via iptables** — `eth0 -> wlan0` AND `eth0 -> eth1` are both DROP'd so if the VPN dies, client traffic is blocked on every uplink, not leaked to the ISP.
+- **DHCP/DNS for the client LAN comes from NetworkManager shared mode, NOT the standalone dnsmasq service** — `setup.sh` sets eth0 to `ipv4.method shared`, and NM spawns its own dnsmasq on 192.168.5.1 (DHCP leases + DNS forwarded to resolv.conf's Mullvad 10.64.0.1, i.e. through the tunnel). The standalone `dnsmasq.service` is explicitly disabled: two instances can't bind ports 53/67, so if both are enabled the standalone one fails at every boot and drags `vpn-router.service` into a `failed` state with it (this happened — fixed 2026-06). The dnsmasq *package* must stay installed; NM needs the binary. NM shared mode also adds an `nm-shared-eth0` nft table with its own broad masquerade — harmless, because the iptables FORWARD DROPs still gate all forwarding.
 - **Local LAN exception (optional)** — `vpn-router-setup.sh` has a `LOCAL_LAN_HOSTS` variable listing specific upstream-LAN IPs that client devices are allowed to reach directly. This is intentionally narrow (single-host allowlist, not a subnet) so the kill switch stays almost entirely strict. Source-NAT is applied so the remote host sees traffic from the Pi's eth1 address. Use for things like a NAS that can't be put behind the VPN but still needs to be accessible from the client LAN. Leave empty to keep the kill switch fully strict.
 - **Wi-Fi power save disabled** — Dispatcher script at `/etc/NetworkManager/dispatcher.d/90-wifi-powersave-off` runs `iw dev wlan0 set power_save off` on every wlan0 up event. Without this, wlan0 pings are 2500 ms+ even with perfect signal.
 - **CPU governor pinned to performance** — `cpu-performance.service` systemd unit. `ondemand` causes noticeable latency spikes on wake-from-idle for a router workload.

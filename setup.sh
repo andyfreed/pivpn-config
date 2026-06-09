@@ -22,6 +22,9 @@ sudo apt-get update
 sudo apt-get upgrade -y
 
 echo "=== Installing packages ==="
+# dnsmasq: the BINARY is required by NetworkManager's shared mode (which runs
+# its own dnsmasq instance for the client LAN); the standalone SERVICE is
+# disabled below — two instances can't bind the same ports.
 sudo apt-get install -y wireguard wireguard-tools dnsmasq openresolv
 
 echo "=== Installing Tailscale ==="
@@ -74,7 +77,6 @@ sudo sed -i "s|CHANGE_ME_SERVER_IP|$SERVER_IP|" /etc/wireguard/mullvad.conf
 sudo chmod 600 /etc/wireguard/mullvad.conf
 
 echo "=== Copying config files ==="
-sudo cp "$SCRIPT_DIR/configs/dnsmasq.conf" /etc/dnsmasq.conf
 sudo cp "$SCRIPT_DIR/configs/90-ipforward.conf" /etc/sysctl.d/90-ipforward.conf
 sudo cp "$SCRIPT_DIR/configs/91-disable-ipv6.conf" /etc/sysctl.d/91-disable-ipv6.conf
 sudo sysctl --system
@@ -130,8 +132,11 @@ sudo chattr +i /etc/resolv.conf
 
 echo "=== Configuring ethernet sharing (eth0 = client LAN) ==="
 # eth0 is the Pi's built-in ethernet port; it serves the 192.168.5.0/24
-# client LAN. If a USB ethernet adapter is present (eth1), it becomes the
-# preferred uplink to the router/modem with wlan0 as a Wi-Fi fallback.
+# client LAN. NetworkManager's "shared" mode does the heavy lifting: it
+# spawns a dnsmasq instance on 192.168.5.1 that hands out DHCP leases and
+# forwards client DNS to /etc/resolv.conf's nameserver (Mullvad 10.64.0.1,
+# i.e. through the tunnel). If a USB ethernet adapter is present (eth1), it
+# becomes the preferred uplink to the router/modem with wlan0 as a fallback.
 ETH_CONN=$(nmcli -t -f NAME,TYPE,DEVICE connection show | awk -F: '$2=="802-3-ethernet" && $3=="eth0"{print $1; exit}')
 if [ -z "$ETH_CONN" ]; then
     ETH_CONN=$(nmcli -t -f NAME,TYPE connection show | grep ethernet | head -1 | cut -d: -f1)
@@ -178,10 +183,13 @@ sudo systemctl disable --now ModemManager 2>/dev/null
 sudo systemctl disable --now rpcbind nfs-blkmap 2>/dev/null
 sudo systemctl disable --now avahi-daemon 2>/dev/null
 sudo systemctl disable --now lightdm 2>/dev/null
+# Standalone dnsmasq would fight NetworkManager's shared-mode dnsmasq over
+# ports 53/67 on eth0 and lose at every boot (status: failed). NM's instance
+# does the job (DHCP + tunnel-routed DNS), so the standalone service stays off.
+sudo systemctl disable --now dnsmasq 2>/dev/null
 
 echo "=== Enabling services ==="
 sudo systemctl daemon-reload
-sudo systemctl enable dnsmasq
 sudo systemctl enable vpn-router.service
 sudo systemctl enable cpu-performance.service
 
