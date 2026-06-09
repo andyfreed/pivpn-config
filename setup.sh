@@ -174,6 +174,14 @@ EOF
 sudo bash -c 'cat > /etc/ssh/sshd_config.d/listen.conf << EOF
 ListenAddress 192.168.5.1
 EOF'
+# Because sshd binds that specific address, it loses a boot race against
+# NetworkManager bringing eth0 up and dies ("Cannot assign requested
+# address"). This drop-in waits for the network and retries on failure.
+sudo mkdir -p /etc/systemd/system/ssh.service.d
+sudo cp "$SCRIPT_DIR/configs/ssh-wait-network.conf" \
+    /etc/systemd/system/ssh.service.d/10-wait-network.conf
+sudo systemctl enable NetworkManager-wait-online.service 2>/dev/null
+sudo systemctl daemon-reload
 sudo systemctl restart sshd
 
 echo "=== Disabling unnecessary services ==="
