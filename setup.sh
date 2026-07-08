@@ -130,28 +130,61 @@ sudo cp "$SCRIPT_DIR/configs/resolv.conf.mullvad" /etc/resolv.conf.mullvad
 sudo cp /etc/resolv.conf.mullvad /etc/resolv.conf
 sudo chattr +i /etc/resolv.conf
 
-echo "=== Configuring ethernet sharing (eth0 = client LAN) ==="
-# eth0 is the Pi's built-in ethernet port; it serves the 192.168.5.0/24
-# client LAN. NetworkManager's "shared" mode does the heavy lifting: it
-# spawns a dnsmasq instance on 192.168.5.1 that hands out DHCP leases and
-# forwards client DNS to /etc/resolv.conf's nameserver (Mullvad 10.64.0.1,
-# i.e. through the tunnel). If a USB ethernet adapter is present (eth1), it
-# becomes the preferred uplink to the router/modem with wlan0 as a fallback.
-ETH_CONN=$(nmcli -t -f NAME,TYPE,DEVICE connection show | awk -F: '$2=="802-3-ethernet" && $3=="eth0"{print $1; exit}')
+echo "=== Configuring ethernet sharing (built-in NIC = client LAN) ==="
+# The Pi's BUILT-IN ethernet port serves the 192.168.5.0/24 client LAN via
+# NetworkManager "shared" mode (it spawns a dnsmasq on 192.168.5.1 that hands
+# out DHCP leases and forwards client DNS to /etc/resolv.conf's nameserver —
+# Mullvad 10.64.0.1, i.e. through the tunnel). A USB ethernet adapter, if
+# present, becomes the preferred uplink (wlan0 is the fallback).
+#
+# CRITICAL: pin the client-LAN (shared) connection to the built-in NIC by MAC.
+# Without a pin the shared profile isn't tied to a device, so when a USB
+# ethernet dongle appears or revives, NetworkManager can bind the shared
+# profile to the DONGLE instead — the client LAN (and any PC on it) then loses
+# DHCP, and the iptables kill-switch rules (written for eth0) point at the
+# wrong interface. Detect the built-in NIC as the non-USB ethernet and pin it.
+BUILTIN_IF=""; BUILTIN_MAC=""
+for dev in /sys/class/net/eth*; do
+    [ -e "$dev" ] || continue
+    ifn=$(basename "$dev")
+    if readlink -f "$dev/device" 2>/dev/null | grep -q usb; then
+        continue                      # USB adapter -> uplink, not the client LAN
+    fi
+    BUILTIN_IF="$ifn"; BUILTIN_MAC=$(cat "$dev/address"); break
+done
+: "${BUILTIN_IF:=eth0}"
+
+ETH_CONN=$(nmcli -t -f NAME,TYPE,DEVICE connection show | awk -F: -v d="$BUILTIN_IF" '$2=="802-3-ethernet" && $3==d{print $1; exit}')
 if [ -z "$ETH_CONN" ]; then
     ETH_CONN=$(nmcli -t -f NAME,TYPE connection show | grep ethernet | head -1 | cut -d: -f1)
 fi
-sudo nmcli connection modify "$ETH_CONN" ipv4.method shared ipv4.addresses 192.168.5.1/24 ipv4.gateway "" connection.autoconnect yes
+sudo nmcli connection modify "$ETH_CONN" \
+    ipv4.method shared ipv4.addresses 192.168.5.1/24 ipv4.gateway "" \
+    connection.autoconnect yes connection.autoconnect-priority 100
+if [ -n "$BUILTIN_MAC" ]; then
+    sudo nmcli connection modify "$ETH_CONN" 802-3-ethernet.mac-address "$BUILTIN_MAC"
+    echo "  Client LAN pinned to built-in NIC $BUILTIN_IF ($BUILTIN_MAC)."
+fi
 
-echo "=== Configuring USB ethernet uplink (eth1) if present ==="
-if [ -e /sys/class/net/eth1 ]; then
-    sudo nmcli connection add type ethernet ifname eth1 con-name eth1-uplink \
+echo "=== Configuring USB ethernet uplink if present ==="
+# The dongle is whatever ethernet is NOT the (MAC-pinned) built-in NIC. Bind
+# the uplink by interface NAME (not MAC) so a replacement dongle still works.
+USB_IF=""
+for dev in /sys/class/net/eth*; do
+    [ -e "$dev" ] || continue
+    ifn=$(basename "$dev")
+    [ "$ifn" = "$BUILTIN_IF" ] && continue
+    if readlink -f "$dev/device" 2>/dev/null | grep -q usb; then USB_IF="$ifn"; break; fi
+done
+if [ -n "$USB_IF" ]; then
+    sudo nmcli connection add type ethernet ifname "$USB_IF" con-name eth1-uplink \
         autoconnect yes ipv4.method auto ipv6.method disabled ipv4.route-metric 50 2>/dev/null || \
-    sudo nmcli connection modify eth1-uplink ipv4.method auto ipv6.method disabled ipv4.route-metric 50
+    sudo nmcli connection modify eth1-uplink connection.interface-name "$USB_IF" \
+        ipv4.method auto ipv6.method disabled ipv4.route-metric 50
     sudo nmcli connection up eth1-uplink 2>/dev/null || true
-    echo "  eth1 configured as primary uplink (metric 50)."
+    echo "  $USB_IF configured as primary uplink (metric 50); wlan0 is the fallback."
 else
-    echo "  No eth1 detected. Wi-Fi (wlan0) will be the uplink."
+    echo "  No USB ethernet detected. Wi-Fi (wlan0) will be the uplink."
     echo "  Plug in a USB ethernet adapter and re-run this block to switch."
 fi
 
